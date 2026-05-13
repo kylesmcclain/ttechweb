@@ -2,6 +2,10 @@
 
 Static website for Techordia, an Alameda-based managed IT services provider serving the Bay Area and beyond.
 
+Live share link: https://kylesmcclain.github.io/ttechweb/
+
+GitHub repository: https://github.com/kylesmcclain/ttechweb
+
 ## Editing
 
 - Homepage structure lives in `index.html`.

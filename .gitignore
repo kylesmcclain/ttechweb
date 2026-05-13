@@ -1,3 +1,4 @@
 .playwright-mcp/
-*.png
 *.log
+playwright-*.png
+*-screenshot.png
