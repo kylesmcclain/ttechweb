@@ -1,0 +1,29 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Techordia logo</title>
+  <desc id="desc">Blue and teal geometric Techordia T mark.</desc>
+  <defs>
+    <linearGradient id="leftMark" x1="196" y1="334" x2="547" y2="493" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0758C9"/>
+      <stop offset="0.5" stop-color="#008FE2"/>
+      <stop offset="1" stop-color="#13B7E2"/>
+    </linearGradient>
+    <linearGradient id="centerMark" x1="465" y1="331" x2="538" y2="786" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#08B6E5"/>
+      <stop offset="0.48" stop-color="#13B9CF"/>
+      <stop offset="1" stop-color="#14BFA1"/>
+    </linearGradient>
+    <linearGradient id="rightMark" x1="560" y1="320" x2="792" y2="682" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#10BCE5"/>
+      <stop offset="0.48" stop-color="#16BDBA"/>
+      <stop offset="1" stop-color="#17B996"/>
+    </linearGradient>
+    <filter id="softShadow" x="170" y="242" width="680" height="570" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="10" stdDeviation="11" flood-color="#063B6E" flood-opacity="0.14"/>
+    </filter>
+  </defs>
+  <g filter="url(#softShadow)">
+    <path d="M314 248H544L414 385H178L314 248Z" fill="url(#leftMark)"/>
+    <path d="M438 404L517 304V691C517 713 510 729 494 745L438 802V404Z" fill="url(#centerMark)"/>
+    <path d="M537 304C553 267 587 248 640 248H827L723 363C714 373 702 379 688 379H620C593 379 579 393 579 421V623C579 646 572 662 555 679L537 697V304Z" fill="url(#rightMark)"/>
+  </g>
+</svg>
