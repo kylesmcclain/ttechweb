@@ -11,7 +11,7 @@ GitHub repository: https://github.com/kylesmcclain/ttechweb
 - Homepage structure lives in `index.html`.
 - Services and process steps live in `assets/site-data.js`.
 - Colors, spacing, typography, and responsive styling live in `styles.css`.
-- The Techordia logo asset lives in `assets/techordia-logo.svg`.
+- The visible Techordia logo asset lives in `assets/techordia-logo-official.png`; `assets/techordia-logo.svg` is retained for the browser favicon.
 
 ## Run Locally
 

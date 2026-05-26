@@ -55,18 +55,15 @@ a {
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
   width: max-content;
-  font-size: 20px;
-  font-weight: 780;
 }
 
 .brand img {
-  width: 42px;
-  height: 42px;
+  display: block;
+  width: clamp(150px, 15vw, 210px);
+  height: auto;
 }
 
-.brand span,
 footer span:first-child {
   color: transparent;
   background: linear-gradient(90deg, var(--blue), var(--cyan) 48%, var(--teal));
@@ -141,7 +138,7 @@ nav a:hover::after {
 }
 
 .hero-wordmark {
-  width: min(780px, 100%);
+  width: min(620px, 100%);
   margin: 0;
 }
 
@@ -213,7 +210,7 @@ nav a:hover::after {
 
 .hero-visual img {
   position: relative;
-  width: min(410px, 78%);
+  width: min(430px, 86%);
   filter: drop-shadow(0 28px 42px rgba(5, 56, 112, 0.18));
 }
 
@@ -424,7 +421,7 @@ nav a:hover::after {
 }
 
 .contact img {
-  width: 84px;
+  width: min(260px, 76%);
   margin-bottom: 18px;
 }
 
@@ -511,8 +508,8 @@ footer {
     padding: 14px 18px;
   }
 
-  .brand span {
-    font-size: 18px;
+  .brand img {
+    width: 150px;
   }
 
   .nav-cta {
