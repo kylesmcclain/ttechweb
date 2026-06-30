@@ -824,6 +824,12 @@
 
   function onResize() {
     resize();
+    // Idle keeps the RAF loop off, so repaint the static frame ourselves —
+    // otherwise a resize before the first interaction blanks the gate canvas.
+    if (!Loop.running) {
+      Water.draw(0);
+      Hose.draw();
+    }
   }
 
   function onMotionChange(e) {
