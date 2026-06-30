@@ -377,6 +377,8 @@ nav a:hover::after {
   width: 100%;
   height: 100%;
   display: block;
+  /* Own all touch gestures directly on the element receiving pointer events. */
+  touch-action: none;
 }
 
 /* Corner vacuum unit the hose connects back to. */
@@ -459,6 +461,20 @@ nav a:hover::after {
     0 8px 18px rgba(3, 25, 55, 0.45);
 }
 
+/* Dark inlet so the head reads as a vacuum mouth, not a blank tile. */
+.nozzle-head::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 15px;
+  height: 15px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 40%, #143b66 0%, #0a2647 60%, #06203f 100%);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
 .nozzle-glow {
   position: absolute;
   left: -34px;
@@ -475,6 +491,39 @@ nav a:hover::after {
   opacity: 1;
 }
 
+/* Concentric suction ring: pulses outward to invite while idle, and inward
+   (a "pull") while suctioning. Universal "this sucks things in" signal. */
+.gate-nozzle::after {
+  content: "";
+  position: absolute;
+  left: -30px;
+  top: -30px;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: 2px solid rgba(150, 228, 255, 0.6);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.gate:not(.is-engaged) .gate-nozzle::after {
+  animation: nozzleIdle 2s ease-out infinite;
+}
+
+.gate.is-suction .gate-nozzle::after {
+  animation: nozzleSuck 0.7s ease-out infinite;
+}
+
+@keyframes nozzleIdle {
+  0% { transform: scale(0.55); opacity: 0.55; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+@keyframes nozzleSuck {
+  0% { transform: scale(1.5); opacity: 0.75; }
+  100% { transform: scale(0.45); opacity: 0; }
+}
+
 /* First-run hint. */
 .gate-hint {
   position: absolute;
@@ -487,12 +536,13 @@ nav a:hover::after {
   gap: 12px;
   padding: 14px 22px;
   border-radius: 999px;
-  background: rgba(4, 36, 74, 0.42);
-  border: 1px solid rgba(190, 232, 255, 0.45);
-  color: #eaf8ff;
+  background: rgba(4, 32, 66, 0.72);
+  border: 1px solid rgba(190, 232, 255, 0.5);
+  color: #f1fbff;
   font-size: clamp(15px, 2.4vw, 19px);
   font-weight: 720;
   letter-spacing: 0.01em;
+  text-shadow: 0 1px 3px rgba(0, 20, 45, 0.55);
   backdrop-filter: blur(4px);
   pointer-events: none;
   transition: opacity 320ms ease, transform 320ms ease;
@@ -532,18 +582,19 @@ nav a:hover::after {
   cursor: pointer;
   padding: 10px 16px;
   border-radius: 999px;
-  border: 1px solid rgba(220, 244, 255, 0.5);
-  background: rgba(6, 40, 80, 0.4);
-  color: #eaf8ff;
+  border: 1px solid rgba(220, 244, 255, 0.55);
+  background: rgba(5, 34, 68, 0.78);
+  color: #f1fbff;
   font-size: 13px;
   font-weight: 740;
+  text-shadow: 0 1px 2px rgba(0, 20, 45, 0.5);
   backdrop-filter: blur(6px);
   transition: background 160ms ease, transform 160ms ease;
 }
 
 .gate-skip:hover,
 .gate-sound:hover {
-  background: rgba(6, 40, 80, 0.7);
+  background: rgba(5, 34, 68, 0.92);
   transform: translateY(-1px);
 }
 
