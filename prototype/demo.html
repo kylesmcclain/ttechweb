@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="description" content="Prototype: drag a wet/dry vacuum to suck the floodwater off the screen and reveal the AquaRestore water damage restoration site." />
+    <title>AquaRestore — Vacuum Intro Gate Prototype</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.4c4 5 6.6 8.2 6.6 11.4a6.6 6.6 0 0 1-13.2 0C5.4 10.6 8 7.4 12 2.4Z' fill='%2310b8e6'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="demo.css" />
+    <script defer src="demo.js"></script>
+  </head>
+  <body>
+    <!-- ===== Real (dummy) restoration site — always in the DOM beneath the gate ===== -->
+    <main class="site" id="site-top">
+      <header class="site-header">
+        <a class="brand" href="#site-top" aria-label="AquaRestore home">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="26" height="26" role="img" aria-hidden="true">
+              <path d="M12 2.4c4 5 6.6 8.2 6.6 11.4a6.6 6.6 0 0 1-13.2 0C5.4 10.6 8 7.4 12 2.4Z" fill="currentColor" />
+            </svg>
+          </span>
+          <span class="brand-name">AquaRestore</span>
+        </a>
+        <nav aria-label="Primary">
+          <a href="#services">Services</a>
+          <a href="#process">Process</a>
+          <a href="#why">Why us</a>
+          <a href="#contact">Contact</a>
+        </nav>
+        <a class="nav-cta" href="tel:+18005550123">24/7 Emergency</a>
+      </header>
+
+      <section class="hero">
+        <div class="hero-inner">
+          <p class="eyebrow">Water Damage Restoration · IICRC Certified</p>
+          <h1>When water moves in, we move faster.</h1>
+          <p class="lede">
+            Flooded floors, burst pipes, storm damage — AquaRestore extracts the water,
+            dries the structure, and restores your space. Around the clock, across the region.
+          </p>
+          <div class="hero-actions">
+            <a class="button primary" href="tel:+18005550123">Call 1-800-555-0123</a>
+            <a class="button secondary" href="#services">Our services</a>
+          </div>
+          <p class="hero-note">Average on-site response under 60 minutes.</p>
+        </div>
+      </section>
+
+      <section class="section services" id="services">
+        <div class="section-heading">
+          <p class="section-label">What we handle</p>
+          <h2>Full-service water cleanup and restoration.</h2>
+        </div>
+        <div class="card-grid">
+          <article class="card"><span>01</span><h3>Water extraction</h3><p>Truck-mounted extraction pulls standing water out fast to limit spread and damage.</p></article>
+          <article class="card"><span>02</span><h3>Structural drying</h3><p>Air movers and dehumidifiers dry framing, subfloor, and cavities to industry targets.</p></article>
+          <article class="card"><span>03</span><h3>Mold prevention</h3><p>Antimicrobial treatment and moisture monitoring stop secondary damage before it starts.</p></article>
+          <article class="card"><span>04</span><h3>Sewage cleanup</h3><p>Safe handling, sanitizing, and disposal for category 3 water losses.</p></article>
+          <article class="card"><span>05</span><h3>Reconstruction</h3><p>Drywall, flooring, and finish work to put your property back to pre-loss condition.</p></article>
+          <article class="card"><span>06</span><h3>Insurance support</h3><p>We document moisture readings and scope, and bill your carrier directly.</p></article>
+        </div>
+      </section>
+
+      <section class="section process" id="process">
+        <div class="section-heading">
+          <p class="section-label">How it goes</p>
+          <h2>Assess, extract, dry, restore.</h2>
+        </div>
+        <div class="card-grid three">
+          <article class="card"><span>01</span><p>Rapid assessment and moisture mapping the moment we arrive.</p></article>
+          <article class="card"><span>02</span><p>Extract standing water and set up structural drying equipment.</p></article>
+          <article class="card"><span>03</span><p>Monitor to dry targets, then restore finishes to pre-loss condition.</p></article>
+        </div>
+      </section>
+
+      <section class="section why" id="why">
+        <div class="why-inner">
+          <div>
+            <p class="section-label">Why AquaRestore</p>
+            <h2>Calm, certified, and fast when minutes matter.</h2>
+          </div>
+          <div class="why-list">
+            <article><strong>24/7 emergency response</strong><span>Real technicians dispatched any hour, every day of the year.</span></article>
+            <article><strong>IICRC-certified crews</strong><span>Trained to the standard for water restoration and applied drying.</span></article>
+            <article><strong>Direct insurance billing</strong><span>We document the loss and work with your carrier so you don't have to.</span></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="contact" id="contact">
+        <h2>Standing water now? Call before it spreads.</h2>
+        <p>Every hour water sits, the damage and cost climb. Talk to a restoration tech right now.</p>
+        <a class="button primary" href="tel:+18005550123">1-800-555-0123</a>
+      </section>
+
+      <footer class="site-footer">
+        <span class="brand-name">AquaRestore</span>
+        <span>Water Damage Restoration · Prototype demo</span>
+      </footer>
+    </main>
+
+    <!-- ===== The intro gate (decorative overlay). Built/managed by demo.js ===== -->
+    <div class="gate" data-gate hidden>
+      <canvas class="gate-canvas" data-water aria-hidden="true"></canvas>
+
+      <div class="gate-vacuum" data-vacuum aria-hidden="true">
+        <div class="vacuum-body">
+          <div class="vacuum-tank" data-gauge>
+            <span class="vacuum-fill" data-gauge-fill></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="gate-nozzle" data-nozzle aria-hidden="true">
+        <span class="nozzle-head"></span>
+        <span class="nozzle-glow"></span>
+      </div>
+
+      <div class="gate-hint" data-hint aria-hidden="true">
+        <span class="hint-pulse"></span>
+        Drag to vacuum up the water
+      </div>
+
+      <div class="gate-controls">
+        <button class="gate-sound" data-sound type="button" aria-pressed="false" aria-label="Enable suction sound">
+          <span data-sound-label>🔇 Sound</span>
+        </button>
+        <button class="gate-skip" data-skip type="button" aria-label="Skip intro and view site">
+          Skip intro →
+        </button>
+      </div>
+    </div>
+  </body>
+</html>
