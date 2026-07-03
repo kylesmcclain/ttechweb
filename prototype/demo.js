@@ -1,38 +1,52 @@
 /*
- * AquaRestore — "vacuum sucks up the water" intro gate prototype.
+ * AquaRestore — "wash the grime off the screen" intro gate prototype.
  *
- * A fixed full-viewport overlay of clean blue water sits on top of the real
- * (dummy) site. The visitor drags a vacuum nozzle to suck the water away
+ * A fixed full-viewport film of gray dirty water covers the real (dummy) site.
+ * The visitor drags or taps a cartoon spray nozzle to wash the grime away
  * (scratch-to-reveal via canvas `destination-out` of an accumulating mask).
- * A trailing wet-edge glow hugs the cleared boundary, droplet particles streak
- * into the nozzle, and at ~36% cleared the rest auto-drains with a sparkle
- * finale and the gate tears down, revealing the live page beneath.
+ * A white suds line hugs the fresh clean edge, spray mist fans out from the
+ * nozzle tip, murky drips break off and fall, and at ~50% clean a fast
+ * squeegee-style sweep wipes the rest off-screen with a sparkle payoff.
  *
  * One self-contained IIFE. Internal "modules" are plain namespaces sharing the
- * closure: Config, State, Water, Progress, Particles, Hose, FX, Drain, Loop.
+ * closure: Config, State, Grime, Progress, Particles, FX, Sweep, Loop.
  */
 (function () {
   "use strict";
 
   /* ------------------------------------------------------------------ Config */
   var Config = {
-    CLEAR_THRESHOLD: 0.4, // fraction cleared that triggers the drain finale
-    BRUSH_RADIUS: 82, // css px, soft erase radius
+    CLEAR_THRESHOLD: 0.5, // fraction cleaned that triggers the sweep finale
+    BRUSH_RADIUS: 82, // css px, erase radius
     BRUSH_SPACING: 24, // css px between interpolated dabs on a drag
-    BRUSH_SOFT: 0.42, // inner solid stop of the brush gradient (0..1)
+    BRUSH_SOFT: 0.78, // opaque core fraction — crisp edge with a thin wet feather
+    TAP_RADIUS: 130, // main stamp of a tap splash
+    TAP_MS: 250, // max press duration to count as a tap
+    TAP_MOVE_PX: 8, // max pointer displacement to count as a tap
     SAMPLE_MS: 160, // progress sampling interval
     SAMPLE_W: 80,
     SAMPLE_H: 50,
-    ALPHA_CLEARED: 110, // mask alpha at/above which a pixel counts as cleared
-    MAX_PARTICLES: 110,
-    SPAWN_PER_FRAME: 4,
-    PARTICLE_LIFE: 720, // ms
-    ATTRACT: 2800, // suction strength toward the nozzle
-    ATTRACT_K: 36, // softening so accel stays finite at the nozzle
-    SWIRL: 0.3, // perpendicular curve factor for particle paths
-    EDGE_DECAY: 0.1, // alpha removed from the wet-edge glow each frame
-    DRAIN_MS: 980,
-    SAG_BASE: 130, // hose droop in px
+    ALPHA_CLEARED: 110, // mask alpha at/above which a pixel counts as cleaned
+    GRIME_ALPHA_TOP: 0.9, // master translucency knobs — site should tease through
+    GRIME_ALPHA_BOTTOM: 0.94,
+    TEASE_ALPHA: 0.07, // clarity window over the hero headline
+    MAX_PARTICLES: 140,
+    MIST_PER_FRAME: 6, // while dragging
+    MIST_IDLE_PER_FRAME: 2, // while pressing without moving (spray keeps spitting)
+    DRIP_PER_FRAME: 2, // while erasing
+    MIST_LIFE_MIN: 240, // ms
+    MIST_LIFE_MAX: 420,
+    DRIP_LIFE_MIN: 600,
+    DRIP_LIFE_MAX: 900,
+    MIST_SPEED_MIN: 380, // px/s
+    MIST_SPEED_MAX: 620,
+    MIST_CONE_DEG: 22,
+    GRAVITY_MIST: 300, // px/s^2
+    GRAVITY_DRIP: 900,
+    TIP: { x: 18, y: -22 }, // spray tip offset from the pointer contact point
+    EDGE_DECAY: 0.12, // suds line pops then vanishes
+    SWEEP_MS: 800,
+    SWEEP_ANGLE: (-18 * Math.PI) / 180,
     MAX_DPR: 2,
     VIBRATE_MS: 6,
     STORAGE_KEY: "aquaGateDone",
@@ -45,8 +59,8 @@
   var siteEl = document.querySelector(".site");
   var canvas = gate.querySelector("[data-water]");
   var nozzleEl = gate.querySelector("[data-nozzle]");
-  var vacuumEl = gate.querySelector("[data-vacuum]");
-  var gaugeFill = gate.querySelector("[data-gauge-fill]");
+  var nozzleInner = gate.querySelector(".nozzle-inner");
+  var progressFill = gate.querySelector("[data-progress-fill]");
   var skipBtn = gate.querySelector("[data-skip]");
   var soundBtn = gate.querySelector("[data-sound]");
   var soundLabel = gate.querySelector("[data-sound-label]");
@@ -67,15 +81,31 @@
 
   /* ------------------------------------------------------------------- State */
   var State = {
-    phase: "idle", // idle -> playing -> draining -> done
+    phase: "idle", // idle -> playing -> sweeping -> done
     pointerDown: false,
     nozzle: { x: -999, y: -999 }, // current css-px pointer/nozzle position
     lastDab: null, // last dab point for segment interpolation
-    moving: false, // nozzle moved this frame (drives spawn + glow)
-    moveDir: { x: 0, y: -1 }, // unit vector of recent motion (spawn bias)
-    vx: 0, // recent horizontal velocity (nozzle lean)
-    cleared: 0, // 0..1 fraction cleared (from Progress)
+    moving: false, // nozzle moved this frame (drives spawn rate)
+    moveDir: { x: 0, y: -1 }, // unit vector of recent motion
+    cleared: 0, // 0..1 fraction cleaned (from Progress)
+    downT: 0, // pointerdown timestamp (tap detection)
+    downX: 0,
+    downY: 0,
+    maxDisp: 0, // max displacement since pointerdown (tap detection)
   };
+
+  // Deterministic PRNG (mulberry32) so the grime pattern is identical on every
+  // rebuild — otherwise the dirt would visibly reshuffle on window resize.
+  function mulberry32(seed) {
+    var a = seed >>> 0;
+    return function () {
+      a |= 0;
+      a = (a + 0x6d2b79f5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
 
   /* ---------------------------------------------------------------- Geometry */
   var dpr = 1;
@@ -84,13 +114,11 @@
   var ctx = canvas.getContext("2d");
 
   // Offscreen layers.
-  var waterCanvas = document.createElement("canvas"); // painted water texture
-  var waterCtx = waterCanvas.getContext("2d");
-  var shimmerCanvas = document.createElement("canvas"); // animated caustics strip
-  var shimmerCtx = shimmerCanvas.getContext("2d");
-  var maskCanvas = document.createElement("canvas"); // accumulates erased area
+  var grimeCanvas = document.createElement("canvas"); // painted grime texture
+  var grimeCtx = grimeCanvas.getContext("2d");
+  var maskCanvas = document.createElement("canvas"); // accumulates cleaned area
   var maskCtx = maskCanvas.getContext("2d");
-  var edgeCanvas = document.createElement("canvas"); // trailing wet-edge glow
+  var edgeCanvas = document.createElement("canvas"); // trailing suds glow
   var edgeCtx = edgeCanvas.getContext("2d");
   var sampleCanvas = document.createElement("canvas"); // tiny downscaled sampler
   var sampleCtx = sampleCanvas.getContext("2d", { willReadFrequently: true });
@@ -98,8 +126,9 @@
   sampleCanvas.height = Config.SAMPLE_H;
 
   // Pre-rendered sprites (built once) so the hot path never allocates gradients.
-  var brushSprite = document.createElement("canvas"); // soft erase dab
-  var edgeSprite = document.createElement("canvas"); // bright rim ring
+  var brushSprite = document.createElement("canvas"); // erase dab (crisp + feather)
+  var edgeSprite = document.createElement("canvas"); // white suds rim ring
+  var sweepSprite = document.createElement("canvas"); // soft leading edge of the sweep
   function buildSprites() {
     var S = 256;
     brushSprite.width = brushSprite.height = S;
@@ -113,95 +142,151 @@
     edgeSprite.width = edgeSprite.height = S;
     var ec = edgeSprite.getContext("2d");
     var eg = ec.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
-    // Bright band sits just outside the erase radius so it survives the mask
-    // and reads as a wet rim hugging the cleared edge.
-    eg.addColorStop(0.0, "rgba(220,248,255,0)");
-    eg.addColorStop(0.74, "rgba(220,248,255,0)");
-    eg.addColorStop(0.84, "rgba(228,250,255,0.95)");
-    eg.addColorStop(0.92, "rgba(190,236,255,0.35)");
-    eg.addColorStop(1.0, "rgba(190,236,255,0)");
+    // White suds band just outside the erase radius: it only survives where
+    // grime remains, so it always reads as foam on dirt, never as more dirt.
+    eg.addColorStop(0.0, "rgba(255,255,255,0)");
+    eg.addColorStop(0.74, "rgba(255,255,255,0)");
+    eg.addColorStop(0.84, "rgba(255,255,255,0.9)");
+    eg.addColorStop(0.92, "rgba(235,245,250,0.35)");
+    eg.addColorStop(1.0, "rgba(235,245,250,0)");
     ec.fillStyle = eg;
     ec.fillRect(0, 0, S, S);
+
+    // Horizontal opaque->transparent strip; scaled at stamp time to soften the
+    // squeegee sweep's leading edge.
+    sweepSprite.width = 64;
+    sweepSprite.height = 2;
+    var sc = sweepSprite.getContext("2d");
+    var sg = sc.createLinearGradient(0, 0, 64, 0);
+    sg.addColorStop(0, "rgba(255,255,255,1)");
+    sg.addColorStop(1, "rgba(255,255,255,0)");
+    sc.fillStyle = sg;
+    sc.fillRect(0, 0, 64, 2);
   }
 
-  /* --------------------------------------------------------- Water + shimmer */
-  var Water = {
+  /* ----------------------------------------------------------------- Grime */
+  var Grime = {
     buildTexture: function () {
-      var c = waterCtx;
-      waterCanvas.width = Math.max(1, Math.round(W * dpr));
-      waterCanvas.height = Math.max(1, Math.round(H * dpr));
+      var c = grimeCtx;
+      var rng = mulberry32(0xa9c1e5);
+      grimeCanvas.width = Math.max(1, Math.round(W * dpr));
+      grimeCanvas.height = Math.max(1, Math.round(H * dpr));
       c.setTransform(dpr, 0, 0, dpr, 0, 0);
       c.clearRect(0, 0, W, H);
 
-      // Base clean-blue gradient. Opaque so the site is fully hidden until the
-      // water is vacuumed away; depth comes from the radial pools layered on top.
-      var g = c.createLinearGradient(0, 0, W, H);
-      g.addColorStop(0, "rgb(26, 146, 222)");
-      g.addColorStop(0.5, "rgb(13, 116, 206)");
-      g.addColorStop(1, "rgb(7, 88, 172)");
-      c.fillStyle = g;
+      // 1. Base wash — the master translucency layer. Grime settles downward.
+      var base = c.createLinearGradient(0, 0, 0, H);
+      base.addColorStop(0, "rgba(88, 94, 104, " + Config.GRIME_ALPHA_TOP + ")");
+      base.addColorStop(1, "rgba(68, 74, 84, " + Config.GRIME_ALPHA_BOTTOM + ")");
+      c.fillStyle = base;
       c.fillRect(0, 0, W, H);
 
-      // Depth pools — a few soft radial highlights/darks (deterministic).
-      var pools = [
-        [0.2, 0.28, 0.42, "rgba(120, 214, 255, 0.30)"],
-        [0.78, 0.22, 0.36, "rgba(150, 226, 255, 0.26)"],
-        [0.62, 0.74, 0.5, "rgba(4, 58, 116, 0.34)"],
-        [0.32, 0.82, 0.4, "rgba(5, 66, 130, 0.28)"],
-      ];
-      for (var i = 0; i < pools.length; i++) {
-        var p = pools[i];
-        var r = p[2] * Math.max(W, H);
-        var rg = c.createRadialGradient(p[0] * W, p[1] * H, 0, p[0] * W, p[1] * H, r);
-        rg.addColorStop(0, p[3]);
+      // 2. Mottled blobs — organic density variation (taupe dirt / slate filth).
+      for (var b = 0; b < 12; b++) {
+        var bx = rng() * W;
+        var by = rng() * H;
+        var br = (0.15 + rng() * 0.3) * Math.max(W, H);
+        var taupe = b % 2 === 0;
+        var rg = c.createRadialGradient(bx, by, 0, bx, by, br);
+        rg.addColorStop(0, taupe ? "rgba(110, 98, 84, 0.14)" : "rgba(48, 55, 65, 0.12)");
         rg.addColorStop(1, "rgba(0,0,0,0)");
         c.fillStyle = rg;
         c.fillRect(0, 0, W, H);
       }
 
-      // A top sheen so the surface reads as wet/glossy.
-      var sheen = c.createLinearGradient(0, 0, 0, H * 0.4);
-      sheen.addColorStop(0, "rgba(255,255,255,0.16)");
-      sheen.addColorStop(1, "rgba(255,255,255,0)");
-      c.fillStyle = sheen;
-      c.fillRect(0, 0, W, H * 0.4);
-    },
+      // 3. Fine noise film — gritty texture, one pattern fill.
+      var tile = document.createElement("canvas");
+      tile.width = tile.height = 160;
+      var tc = tile.getContext("2d");
+      var img = tc.createImageData(160, 160);
+      for (var p = 0; p < img.data.length; p += 4) {
+        var v = 60 + rng() * 50;
+        img.data[p] = v;
+        img.data[p + 1] = v;
+        img.data[p + 2] = v;
+        img.data[p + 3] = rng() * 28;
+      }
+      tc.putImageData(img, 0, 0);
+      c.fillStyle = c.createPattern(tile, "repeat");
+      c.fillRect(0, 0, W, H);
 
-    buildShimmer: function () {
-      // A horizontal caustics strip (2x width) scrolled each frame for movement.
-      var sw = Math.max(2, Math.round(W * 2 * dpr));
-      var sh = Math.max(1, Math.round(H * dpr));
-      shimmerCanvas.width = sw;
-      shimmerCanvas.height = sh;
-      var c = shimmerCtx;
-      c.setTransform(dpr, 0, 0, dpr, 0, 0);
-      c.clearRect(0, 0, W * 2, H);
-      c.lineWidth = 2;
-      for (var s = 0; s < 26; s++) {
-        var baseY = (s / 26) * H;
-        var amp = 8 + ((s * 37) % 22);
-        var phase = (s * 53) % 360;
+      // 4. Vertical drip streaks — the "dirty water ran down this screen" read.
+      for (var s = 0; s < 32; s++) {
+        var sx = rng() * W;
+        var sy = rng() * H * 0.6;
+        var len = 60 + rng() * 260;
+        var w = 3 + rng() * 7;
+        var light = s % 4 === 3; // every 4th is a rain-thinned lighter track
+        var col = light ? "170, 178, 188" : "56, 62, 72";
+        var alpha = light ? 0.12 : 0.2;
+        var lg = c.createLinearGradient(sx, sy, sx, sy + len);
+        lg.addColorStop(0, "rgba(" + col + ", " + alpha + ")");
+        lg.addColorStop(1, "rgba(" + col + ", 0)");
+        c.strokeStyle = lg;
+        c.lineWidth = w;
+        c.lineCap = "round";
         c.beginPath();
-        for (var x = 0; x <= W * 2; x += 14) {
-          var y = baseY + Math.sin((x / 60) + (phase * Math.PI) / 180) * amp;
-          if (x === 0) c.moveTo(x, y);
-          else c.lineTo(x, y);
-        }
-        c.strokeStyle = "rgba(190, 236, 255, " + (0.04 + (s % 3) * 0.018) + ")";
+        c.moveTo(sx, sy);
+        c.lineTo(sx, sy + len);
+        c.stroke();
+        // Hanging drip head at the tail.
+        c.fillStyle = "rgba(" + col + ", " + alpha * 0.9 + ")";
+        c.beginPath();
+        c.arc(sx, sy + len, w * 0.9, 0, Math.PI * 2);
+        c.fill();
+      }
+
+      // 5. Smudge arcs — old half-hearted rag wipes.
+      for (var m = 0; m < 10; m++) {
+        var mx = rng() * W;
+        var my = rng() * H;
+        var mr = 80 + rng() * 180;
+        var a0 = rng() * Math.PI * 2;
+        c.strokeStyle = "rgba(125, 132, 142, 0.08)";
+        c.lineWidth = 24 + rng() * 36;
+        c.lineCap = "round";
+        c.beginPath();
+        c.arc(mx, my, mr, a0, a0 + 0.6 + rng() * 0.9);
         c.stroke();
       }
+
+      // 6. Corner vignette — grime heaviest at the edges (satisfying to finish).
+      var corners = [[0, 0], [W, 0], [0, H], [W, H]];
+      for (var k = 0; k < 4; k++) {
+        var cg = c.createRadialGradient(corners[k][0], corners[k][1], 0, corners[k][0], corners[k][1], 0.45 * Math.max(W, H));
+        cg.addColorStop(0, "rgba(40, 46, 54, 0.15)");
+        cg.addColorStop(1, "rgba(0,0,0,0)");
+        c.fillStyle = cg;
+        c.fillRect(0, 0, W, H);
+      }
+
+      // 7. Clarity tease window — the hero headline ghosts through, baiting
+      //    the visitor to clean. destination-out thins the film locally.
+      var tg = c.createRadialGradient(W * 0.35, H * 0.4, 0, W * 0.35, H * 0.4, W * 0.3);
+      tg.addColorStop(0, "rgba(255,255,255," + Config.TEASE_ALPHA + ")");
+      tg.addColorStop(1, "rgba(255,255,255,0)");
+      c.globalCompositeOperation = "destination-out";
+      c.fillStyle = tg;
+      c.fillRect(0, 0, W, H);
+      c.globalCompositeOperation = "source-over";
+
+      // 8. Faint top film sheen — reads as a dirty window, not matte paint.
+      var sheen = c.createLinearGradient(0, 0, 0, H * 0.35);
+      sheen.addColorStop(0, "rgba(200, 206, 214, 0.10)");
+      sheen.addColorStop(1, "rgba(200, 206, 214, 0)");
+      c.fillStyle = sheen;
+      c.fillRect(0, 0, W, H * 0.35);
     },
 
-    // Soft round dab stamped into the mask (white = erased area), via the
-    // pre-rendered sprite so no gradient is allocated on the hot path.
+    // Crisp-with-feather dab stamped into the mask (white = cleaned area),
+    // via the pre-rendered sprite so no gradient is allocated on the hot path.
     stampMask: function (x, y, radius) {
       maskCtx.drawImage(brushSprite, x - radius, y - radius, radius * 2, radius * 2);
     },
 
-    // Bright rim stamped into the edge layer, sized so the band lands just
-    // outside the cleared hole and survives the destination-out mask.
-    stampEdge: function (x, y) {
-      var r = Config.BRUSH_RADIUS * 1.18;
+    // White suds rim stamped into the edge layer, just outside the cleaned hole.
+    stampEdge: function (x, y, radius) {
+      var r = (radius || Config.BRUSH_RADIUS) * 1.18;
       edgeCtx.drawImage(edgeSprite, x - r, y - r, r * 2, r * 2);
     },
 
@@ -221,7 +306,7 @@
     },
 
     decayEdge: function () {
-      // Fade the wet-edge glow so it only lingers where we just vacuumed.
+      // Fade the suds so foam only lingers where we just cleaned.
       edgeCtx.save();
       edgeCtx.setTransform(1, 0, 0, 1, 0, 0);
       edgeCtx.globalCompositeOperation = "destination-out";
@@ -230,21 +315,17 @@
       edgeCtx.restore();
     },
 
-    draw: function (time) {
+    draw: function () {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, W, H);
-      // Water base.
+      // Grime base.
       ctx.globalCompositeOperation = "source-over";
-      ctx.drawImage(waterCanvas, 0, 0, W, H);
-      // Animated shimmer scrolled horizontally, wrapping.
-      var scroll = (time * 0.012) % W;
-      ctx.globalAlpha = 0.9;
-      ctx.drawImage(shimmerCanvas, -scroll, 0, W * 2, H);
-      ctx.globalAlpha = 1;
-      // Wet-edge glow added over the water (additive), before the hole is cut.
+      ctx.drawImage(grimeCanvas, 0, 0, W, H);
+      // Suds line added over the grime (additive), before the hole is cut —
+      // it can only ever brighten remaining grime, so it always reads as foam.
       ctx.globalCompositeOperation = "lighter";
       ctx.drawImage(edgeCanvas, 0, 0, W, H);
-      // Subtract the erased area in a single drawImage.
+      // Subtract the cleaned area in a single drawImage.
       ctx.globalCompositeOperation = "destination-out";
       ctx.drawImage(maskCanvas, 0, 0, W, H);
       ctx.globalCompositeOperation = "source-over";
@@ -256,7 +337,7 @@
     acc: 0,
     sample: function () {
       sampleCtx.clearRect(0, 0, Config.SAMPLE_W, Config.SAMPLE_H);
-      // Downscale the MASK (cleared area) — robust against water gradient noise.
+      // Downscale the MASK (cleaned area) — robust against grime alpha noise.
       sampleCtx.drawImage(maskCanvas, 0, 0, Config.SAMPLE_W, Config.SAMPLE_H);
       var data = sampleCtx.getImageData(0, 0, Config.SAMPLE_W, Config.SAMPLE_H).data;
       var total = Config.SAMPLE_W * Config.SAMPLE_H;
@@ -271,13 +352,13 @@
       if (this.acc < Config.SAMPLE_MS) return;
       this.acc = 0;
       State.cleared = this.sample();
-      // Honest gauge: the tank reads full exactly when the drain fires.
-      if (gaugeFill) {
-        var pct = Math.min(100, (State.cleared / Config.CLEAR_THRESHOLD) * 100);
-        gaugeFill.style.height = pct + "%";
+      // Honest bar: reads full exactly when the sweep fires.
+      if (progressFill) {
+        var f = Math.min(1, State.cleared / Config.CLEAR_THRESHOLD);
+        progressFill.style.transform = "scaleX(" + f + ")";
       }
       if (State.phase === "playing" && State.cleared >= Config.CLEAR_THRESHOLD) {
-        startDrain();
+        startSweep();
       }
     },
   };
@@ -289,160 +370,139 @@
     init: function () {
       this.pool.length = 0;
       for (var i = 0; i < Config.MAX_PARTICLES; i++) {
-        this.pool.push({ active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, max: 0, size: 0, swirl: 1 });
+        this.pool.push({ active: false, type: "mist", x: 0, y: 0, vx: 0, vy: 0, life: 0, max: 0, size: 0 });
       }
     },
-    reset: function (p, ox, oy, sizeBias) {
-      var k = ++this.seq; // monotonic so spread/angle actually distribute
-      var ang = (k * 2.39963) % (Math.PI * 2); // golden angle
-      var spread = ((k * 41) % 100) / 100;
-      p.x = ox;
-      p.y = oy;
-      p.vx = Math.cos(ang) * 12 * spread;
-      p.vy = Math.sin(ang) * 12 * spread;
-      p.life = 0;
-      p.max = Config.PARTICLE_LIFE * (0.6 + spread * 0.7);
-      p.size = (1.5 + spread * 3.4) * (sizeBias || 1);
-      p.swirl = k % 2 === 0 ? 1 : -1;
-      p.active = true;
+    // Low-cost deterministic "random" stream for spawn variation.
+    rand: function () {
+      var k = ++this.seq;
+      return ((k * 2654435761) % 1000) / 1000;
     },
-    spawn: function () {
-      var spawned = 0;
-      for (var i = 0; i < this.pool.length && spawned < Config.SPAWN_PER_FRAME; i++) {
-        var p = this.pool[i];
-        if (p.active) continue;
-        // Bias the spawn toward the uncleared water ahead of the drag, so
-        // droplets visibly tear off the waterline and get sucked back in.
-        var k = this.seq + 1;
-        var jitter = (((k * 53) % 100) / 100 - 0.5) * Config.BRUSH_RADIUS * 1.4;
-        var perpx = -State.moveDir.y;
-        var perpy = State.moveDir.x;
-        var reach = Config.BRUSH_RADIUS * 1.15;
-        var ox = State.nozzle.x + State.moveDir.x * reach + perpx * jitter;
-        var oy = State.nozzle.y + State.moveDir.y * reach + perpy * jitter;
-        this.reset(p, ox, oy, 1);
-        spawned++;
-      }
-    },
-    burst: function (count) {
-      // A heavy convergent gulp for the drain finale.
+    spawnMist: function (count) {
+      var tipX = State.nozzle.x + Config.TIP.x;
+      var tipY = State.nozzle.y + Config.TIP.y;
+      // Base direction: from the spray tip toward the contact point.
+      var baseAng = Math.atan2(-Config.TIP.y, -Config.TIP.x);
+      var cone = (Config.MIST_CONE_DEG * Math.PI) / 180;
       var made = 0;
       for (var i = 0; i < this.pool.length && made < count; i++) {
         var p = this.pool[i];
         if (p.active) continue;
-        var k = this.seq + 1;
+        var r1 = this.rand();
+        var r2 = this.rand();
+        var r3 = this.rand();
+        var ang = baseAng + (r1 - 0.5) * 2 * cone;
+        var speed = Config.MIST_SPEED_MIN + r2 * (Config.MIST_SPEED_MAX - Config.MIST_SPEED_MIN);
+        p.type = "mist";
+        p.x = tipX + (r3 - 0.5) * 6;
+        p.y = tipY + (r1 - 0.5) * 6;
+        p.vx = Math.cos(ang) * speed;
+        p.vy = Math.sin(ang) * speed;
+        p.life = 0;
+        p.max = Config.MIST_LIFE_MIN + r3 * (Config.MIST_LIFE_MAX - Config.MIST_LIFE_MIN);
+        p.size = 1 + r2 * 1.5;
+        p.active = true;
+        made++;
+      }
+    },
+    spawnDrips: function (count, ox, oy, vxBias) {
+      var made = 0;
+      for (var i = 0; i < this.pool.length && made < count; i++) {
+        var p = this.pool[i];
+        if (p.active) continue;
+        var r1 = this.rand();
+        var r2 = this.rand();
+        p.type = "drip";
+        // Bias to the lower half of the cleaned dab so murky drops render
+        // over the light revealed site, not over dark grime.
+        p.x = ox + (r1 - 0.5) * Config.BRUSH_RADIUS * 1.4;
+        p.y = oy + r2 * Config.BRUSH_RADIUS * 0.7;
+        p.vx = (r1 - 0.5) * 80 + (vxBias || 0);
+        p.vy = 20 + r2 * 60;
+        p.life = 0;
+        p.max = Config.DRIP_LIFE_MIN + r1 * (Config.DRIP_LIFE_MAX - Config.DRIP_LIFE_MIN);
+        p.size = 2 + r2 * 2;
+        p.active = true;
+        made++;
+      }
+    },
+    // Radial mist fan for tap splashes.
+    burstMist: function (count, ox, oy) {
+      var made = 0;
+      for (var i = 0; i < this.pool.length && made < count; i++) {
+        var p = this.pool[i];
+        if (p.active) continue;
+        var k = ++this.seq;
         var ang = (k * 2.39963) % (Math.PI * 2);
-        var rad = (((k * 29) % 100) / 100) * Math.min(W, H) * 0.5;
-        this.reset(p, State.nozzle.x + Math.cos(ang) * rad, State.nozzle.y + Math.sin(ang) * rad, 1.5);
+        var r = ((k * 41) % 100) / 100;
+        var speed = 260 + r * 320;
+        p.type = "mist";
+        p.x = ox;
+        p.y = oy;
+        p.vx = Math.cos(ang) * speed;
+        p.vy = Math.sin(ang) * speed;
+        p.life = 0;
+        p.max = Config.MIST_LIFE_MIN + r * (Config.MIST_LIFE_MAX - Config.MIST_LIFE_MIN);
+        p.size = 1 + r * 1.8;
+        p.active = true;
         made++;
       }
     },
     update: function (dt) {
       var dts = dt / 1000;
-      var nx = State.nozzle.x;
-      var ny = State.nozzle.y;
       for (var i = 0; i < this.pool.length; i++) {
         var p = this.pool[i];
         if (!p.active) continue;
         p.life += dt;
-        var dx = nx - p.x;
-        var dy = ny - p.y;
-        var d = Math.sqrt(dx * dx + dy * dy) || 0.001;
-        if (p.life >= p.max || d < 8) {
+        if (p.life >= p.max) {
           p.active = false;
           continue;
         }
-        var ux = dx / d;
-        var uy = dy / d;
-        var accel = Config.ATTRACT / (d + Config.ATTRACT_K);
-        // Toward nozzle + a perpendicular swirl for a curved suck.
-        p.vx += (ux * accel - uy * accel * Config.SWIRL * p.swirl) * dts;
-        p.vy += (uy * accel + ux * accel * Config.SWIRL * p.swirl) * dts;
-        p.vx *= 0.96;
-        p.vy *= 0.96;
+        var g = p.type === "mist" ? Config.GRAVITY_MIST : Config.GRAVITY_DRIP;
+        p.vy = Math.min(700, p.vy + g * dts);
+        if (p.type === "mist") {
+          p.vx *= 0.9;
+          p.vy *= 0.94;
+        }
         p.x += p.vx * dts;
         p.y += p.vy * dts;
       }
     },
     draw: function () {
-      ctx.globalCompositeOperation = "lighter"; // luminous water spray
+      ctx.globalCompositeOperation = "source-over";
+      ctx.lineCap = "round";
       for (var i = 0; i < this.pool.length; i++) {
         var p = this.pool[i];
         if (!p.active) continue;
         var t = p.life / p.max;
-        var alpha = t < 0.2 ? t / 0.2 : 1 - (t - 0.2) / 0.8;
+        var alpha = t < 0.15 ? t / 0.15 : 1 - (t - 0.15) / 0.85;
         alpha = Math.max(0, alpha);
         var speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
-        // Stretch the droplet into a streak along its velocity when moving fast.
-        var len = Math.min(20, speed * 0.018);
-        ctx.globalAlpha = alpha * 0.85;
-        ctx.strokeStyle = "rgba(206, 242, 255, 1)";
-        ctx.lineCap = "round";
-        ctx.lineWidth = p.size;
-        if (len > p.size) {
-          var ux = p.vx / (speed || 1);
-          var uy = p.vy / (speed || 1);
+        var len = Math.min(14, speed * 0.016);
+        if (p.type === "mist") {
+          ctx.globalAlpha = alpha * 0.8;
+          ctx.strokeStyle = "rgba(222, 238, 252, 1)";
+          ctx.fillStyle = "rgba(222, 238, 252, 1)";
+        } else {
+          ctx.globalAlpha = alpha * 0.85;
+          ctx.strokeStyle = "rgba(96, 88, 78, 1)";
+          ctx.fillStyle = "rgba(96, 88, 78, 1)";
+        }
+        if (len > p.size && speed > 1) {
+          var ux = p.vx / speed;
+          var uy = p.vy / speed;
+          ctx.lineWidth = p.size;
           ctx.beginPath();
           ctx.moveTo(p.x, p.y);
           ctx.lineTo(p.x - ux * len, p.y - uy * len);
           ctx.stroke();
         } else {
-          ctx.fillStyle = "rgba(230, 249, 255, 1)";
           ctx.beginPath();
-          ctx.arc(p.x, p.y, p.size * 0.6, 0, Math.PI * 2);
+          ctx.arc(p.x, p.y, p.size * 0.7, 0, Math.PI * 2);
           ctx.fill();
         }
       }
       ctx.globalAlpha = 1;
-      ctx.globalCompositeOperation = "source-over";
-    },
-  };
-
-  /* ----------------------------------------------------------------- Hose */
-  var Hose = {
-    anchor: { x: 0, y: 0 }, // corner vacuum inlet, in css px
-    measure: function () {
-      var r = vacuumEl.getBoundingClientRect();
-      var g = gate.getBoundingClientRect();
-      this.anchor.x = r.left - g.left + r.width * 0.5;
-      this.anchor.y = r.top - g.top + 14;
-    },
-    draw: function () {
-      var p0x = State.nozzle.x;
-      var p0y = State.nozzle.y;
-      var p2x = this.anchor.x;
-      var p2y = this.anchor.y;
-      var mx = (p0x + p2x) / 2;
-      var my = (p0y + p2y) / 2;
-      var dx = p2x - p0x;
-      var dy = p2y - p0y;
-      var dist = Math.sqrt(dx * dx + dy * dy);
-      var maxDist = Math.sqrt(W * W + H * H);
-      var sag = Config.SAG_BASE * (0.5 + 0.8 * (1 - dist / maxDist));
-      var c1x = mx;
-      var c1y = my + sag;
-
-      ctx.globalCompositeOperation = "source-over";
-      ctx.lineCap = "round";
-      // Outer rubbery tube.
-      ctx.beginPath();
-      ctx.moveTo(p0x, p0y);
-      ctx.quadraticCurveTo(c1x, c1y, p2x, p2y);
-      ctx.lineWidth = 15;
-      ctx.strokeStyle = "rgba(8, 44, 84, 0.85)";
-      ctx.stroke();
-      // Inner highlight.
-      ctx.beginPath();
-      ctx.moveTo(p0x, p0y);
-      ctx.quadraticCurveTo(c1x, c1y, p2x, p2y);
-      ctx.lineWidth = 6;
-      ctx.strokeStyle = "rgba(150, 198, 232, 0.6)";
-      ctx.stroke();
-      // Coupling at the nozzle end.
-      ctx.beginPath();
-      ctx.arc(p0x, p0y, 9, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(20, 60, 104, 0.9)";
-      ctx.fill();
     },
   };
 
@@ -458,14 +518,17 @@
       var AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
       this.actx = new AC();
-      var len = this.actx.sampleRate * 1.5;
+      // White noise buffer — bandpassed live into a spray hiss.
+      var len = Math.floor(this.actx.sampleRate * 1.5);
       this.noiseBuf = this.actx.createBuffer(1, len, this.actx.sampleRate);
       var d = this.noiseBuf.getChannelData(0);
-      var last = 0;
+      var x = 1234567;
       for (var i = 0; i < len; i++) {
-        var wn = (i % 97) / 97 - 0.5 + (i % 13) / 13 - 0.5;
-        last = (last + 0.02 * wn) / 1.02;
-        d[i] = last * 3.2;
+        // xorshift — cheap deterministic white noise
+        x ^= x << 13;
+        x ^= x >>> 17;
+        x ^= x << 5;
+        d[i] = ((x >>> 0) / 4294967296 - 0.5) * 0.9;
       }
     },
     setEnabled: function (yes) {
@@ -476,10 +539,11 @@
         this.ensure();
         if (this.actx && this.actx.state === "suspended") this.actx.resume();
       } else {
-        this.setSuction(false);
+        this.setSpray(false);
       }
     },
-    setSuction: function (active) {
+    // Looping spray hiss while the trigger is held.
+    setSpray: function (active) {
       if (!this.on || !this.actx) {
         if (!active && this.src) this.stopSrc();
         return;
@@ -488,14 +552,15 @@
         this.src = this.actx.createBufferSource();
         this.src.buffer = this.noiseBuf;
         this.src.loop = true;
-        var lp = this.actx.createBiquadFilter();
-        lp.type = "lowpass";
-        lp.frequency.value = 900;
+        var bp = this.actx.createBiquadFilter();
+        bp.type = "bandpass";
+        bp.frequency.value = 2800;
+        bp.Q.value = 0.8;
         this.gain = this.actx.createGain();
         this.gain.gain.value = 0.0;
-        this.src.connect(lp).connect(this.gain).connect(this.actx.destination);
+        this.src.connect(bp).connect(this.gain).connect(this.actx.destination);
         this.src.start();
-        this.gain.gain.linearRampToValueAtTime(0.18, this.actx.currentTime + 0.08);
+        this.gain.gain.linearRampToValueAtTime(0.14, this.actx.currentTime + 0.06);
       } else if (!active && this.src) {
         this.stopSrc();
       }
@@ -503,90 +568,160 @@
     stopSrc: function () {
       if (!this.src) return;
       try {
-        if (this.gain) this.gain.gain.linearRampToValueAtTime(0, this.actx.currentTime + 0.12);
+        if (this.gain) this.gain.gain.linearRampToValueAtTime(0, this.actx.currentTime + 0.1);
         var s = this.src;
         window.setTimeout(function () {
           try { s.stop(); } catch (e) {}
-        }, 140);
+        }, 120);
       } catch (e) {}
       this.src = null;
       this.gain = null;
     },
-    finalSlurp: function () {
+    // Short one-shot psshh for tap splashes.
+    burstHiss: function () {
       if (!this.on || !this.actx) return;
       var t = this.actx.currentTime;
       var o = this.actx.createBufferSource();
       o.buffer = this.noiseBuf;
-      var lp = this.actx.createBiquadFilter();
-      lp.type = "lowpass";
-      lp.frequency.setValueAtTime(1600, t);
-      lp.frequency.exponentialRampToValueAtTime(220, t + 0.5);
+      var bp = this.actx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = 3200;
+      bp.Q.value = 0.9;
       var g = this.actx.createGain();
-      g.gain.setValueAtTime(0.32, t);
+      g.gain.setValueAtTime(0.22, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+      o.connect(bp).connect(g).connect(this.actx.destination);
+      o.start(t);
+      o.stop(t + 0.2);
+    },
+    // Rising filtered whoosh under the squeegee sweep.
+    sweepWhoosh: function () {
+      if (!this.on || !this.actx) return;
+      var t = this.actx.currentTime;
+      var o = this.actx.createBufferSource();
+      o.buffer = this.noiseBuf;
+      var bp = this.actx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.setValueAtTime(1200, t);
+      bp.frequency.exponentialRampToValueAtTime(4000, t + 0.5);
+      bp.Q.value = 1.1;
+      var g = this.actx.createGain();
+      g.gain.setValueAtTime(0.24, t);
       g.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
-      o.connect(lp).connect(g).connect(this.actx.destination);
+      o.connect(bp).connect(g).connect(this.actx.destination);
       o.start(t);
       o.stop(t + 0.6);
+    },
+    // "All clean" triad blip — the earned payoff.
+    ding: function () {
+      if (!this.on || !this.actx) return;
+      var t0 = this.actx.currentTime;
+      var freqs = [1318.5, 1661.2, 1975.5]; // E6 / G#6 / B6
+      for (var i = 0; i < freqs.length; i++) {
+        var o = this.actx.createOscillator();
+        o.type = "sine";
+        o.frequency.value = freqs[i];
+        var g = this.actx.createGain();
+        var t = t0 + i * 0.03;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.12, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+        o.connect(g).connect(this.actx.destination);
+        o.start(t);
+        o.stop(t + 0.4);
+      }
     },
     vibrate: function () {
       if (navigator.vibrate) navigator.vibrate(Config.VIBRATE_MS);
     },
   };
 
-  /* ---------------------------------------------------------------- Drain */
-  var Drain = {
+  /* ---------------------------------------------------------------- Sweep */
+  var Sweep = {
     elapsed: 0,
-    seeds: [],
+    dingFired: false,
+    dir: { x: 0, y: 0 }, // sweep travel direction in screen coords
     start: function () {
       this.elapsed = 0;
-      this.seeds = [
-        { x: State.nozzle.x, y: State.nozzle.y },
-        { x: W * 0.25, y: H * 0.35 },
-        { x: W * 0.75, y: H * 0.4 },
-        { x: W * 0.5, y: H * 0.72 },
-        { x: W * 0.5, y: H * 0.5 },
-      ];
-      FX.finalSlurp();
-      FX.setSuction(false);
-      Particles.burst(56);
+      this.dingFired = false;
+      this.dir.x = Math.cos(Config.SWEEP_ANGLE);
+      this.dir.y = Math.sin(Config.SWEEP_ANGLE);
+      FX.setSpray(false);
+      FX.sweepWhoosh();
     },
     tick: function (dt) {
       this.elapsed += dt;
-      var t = Math.min(1, this.elapsed / Config.DRAIN_MS);
+      var t = Math.min(1, this.elapsed / Config.SWEEP_MS);
       var ease = t * t * (3 - 2 * t);
-      var maxR = Math.sqrt(W * W + H * H) * 0.62;
-      for (var i = 0; i < this.seeds.length; i++) {
-        var s = this.seeds[i];
-        var r = ease * maxR * (0.7 + (i % 3) * 0.18);
-        if (r > 0) Water.stampMask(s.x, s.y, r);
+      var diag = Math.sqrt(W * W + H * H);
+
+      // Progressively clear a rotated full-height band, left -> right, with a
+      // soft gradient leading edge. It's just aggressive mask stamping, so the
+      // destination-out composite and progress sampling need no changes.
+      maskCtx.save();
+      maskCtx.translate(W / 2, H / 2);
+      maskCtx.rotate(Config.SWEEP_ANGLE);
+      var x0 = -diag / 2;
+      var bandW = ease * diag;
+      maskCtx.fillStyle = "rgba(255,255,255,1)";
+      if (bandW > 0) maskCtx.fillRect(x0, -diag / 2, bandW, diag);
+      maskCtx.drawImage(sweepSprite, x0 + bandW, -diag / 2, 150, diag);
+      maskCtx.restore();
+
+      // Trailing drips flung along the squeegee edge.
+      var edgeBase = x0 + bandW;
+      for (var i = 0; i < 4; i++) {
+        var fy = (((this.elapsed * 7 + i * 251) % 997) / 997 - 0.5) * diag;
+        // Rotate the edge-local point back into screen coords.
+        var ex = W / 2 + edgeBase * this.dir.x - fy * this.dir.y;
+        var ey = H / 2 + edgeBase * this.dir.y + fy * this.dir.x;
+        if (ex > -40 && ex < W + 40 && ey > -40 && ey < H + 40) {
+          Particles.spawnDrips(1, ex, ey, this.dir.x * 250);
+        }
       }
-      // "All clean" sparkle bloom peaking mid-drain — a payoff even when muted.
-      if (t > 0.35 && t < 0.95) {
-        var bloom = Math.sin(((t - 0.35) / 0.6) * Math.PI); // 0..1..0
+
+      // Sparkle payoff behind the edge, peaking mid-sweep.
+      if (t > 0.45 && t < 0.95) {
+        var bloom = Math.sin(((t - 0.45) / 0.5) * Math.PI);
         ctx.save();
         ctx.globalCompositeOperation = "lighter";
-        ctx.globalAlpha = bloom * 0.5;
-        var cx = State.nozzle.x;
-        var cy = State.nozzle.y;
-        for (var j = 0; j < 9; j++) {
+        ctx.globalAlpha = bloom * 0.6;
+        ctx.fillStyle = "rgba(255, 255, 255, 1)";
+        ctx.strokeStyle = "rgba(255, 255, 255, 1)";
+        for (var j = 0; j < 8; j++) {
           var a = (j * 2.39963) % (Math.PI * 2);
-          var rr = (0.16 + (j % 4) * 0.12) * Math.min(W, H) * bloom;
-          var sx = cx + Math.cos(a) * rr;
-          var sy = cy + Math.sin(a) * rr;
-          var size = 2 + (j % 3) * 2;
-          ctx.fillStyle = "rgba(235, 251, 255, 1)";
+          var rr = (0.12 + (j % 4) * 0.11) * Math.min(W, H) * bloom;
+          var sx = W * 0.5 + Math.cos(a) * rr;
+          var sy = H * 0.42 + Math.sin(a) * rr;
           ctx.beginPath();
-          ctx.arc(sx, sy, size, 0, Math.PI * 2);
+          ctx.arc(sx, sy, 2 + (j % 3) * 2, 0, Math.PI * 2);
           ctx.fill();
+          // Two of them get 4-point glints — the PowerWash "clean!" twinkle.
+          if (j % 4 === 0) {
+            var gl = 10 + 14 * bloom;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(sx - gl, sy);
+            ctx.lineTo(sx + gl, sy);
+            ctx.moveTo(sx, sy - gl);
+            ctx.lineTo(sx, sy + gl);
+            ctx.stroke();
+          }
         }
         ctx.restore();
         ctx.globalAlpha = 1;
       }
-      // Fade + a slight scale "pull" over the back half of the drain.
-      if (t > 0.45) {
-        var f = (t - 0.45) / 0.55;
+
+      if (!this.dingFired && t >= 0.65) {
+        this.dingFired = true;
+        FX.ding();
+      }
+
+      // Fade + slight scale pull over the back half.
+      if (t > 0.5) {
+        var f = (t - 0.5) / 0.5;
         gate.style.opacity = String(1 - f);
-        gate.style.transform = "scale(" + (1 + f * 0.05) + ")";
+        gate.style.transform = "scale(" + (1 + f * 0.04) + ")";
       }
       if (t >= 1) finish();
     },
@@ -615,11 +750,16 @@
       var dt = Math.min(50, time - this.last);
       this.last = time;
 
-      Water.decayEdge();
-      Water.draw(time);
-      if (State.phase === "draining") Drain.tick(dt);
-      Hose.draw();
-      if (State.phase === "playing" && State.moving) Particles.spawn();
+      Grime.decayEdge();
+      Grime.draw();
+      if (State.phase === "sweeping") Sweep.tick(dt);
+      if (State.phase === "playing" && State.pointerDown) {
+        // Spray keeps spitting while held; heavier while actually scrubbing.
+        Particles.spawnMist(State.moving ? Config.MIST_PER_FRAME : Config.MIST_IDLE_PER_FRAME);
+        if (State.moving && State.lastDab) {
+          Particles.spawnDrips(Config.DRIP_PER_FRAME, State.lastDab.x, State.lastDab.y, 0);
+        }
+      }
       Particles.update(dt);
       Particles.draw();
       Progress.tick(dt);
@@ -644,28 +784,33 @@
       gate.classList.add("is-engaged");
       Loop.start(); // canvas loop starts on first interaction (idle stays cheap)
     }
-    gate.classList.add("is-suction");
+    gate.classList.add("is-spraying");
     try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
     var p = pointerToCss(e);
     State.nozzle.x = p.x;
     State.nozzle.y = p.y;
     State.lastDab = { x: p.x, y: p.y };
+    State.downT = performance.now();
+    State.downX = p.x;
+    State.downY = p.y;
+    State.maxDisp = 0;
     moveNozzleEl(p.x, p.y, 0, true);
-    Water.stampMask(p.x, p.y, Config.BRUSH_RADIUS);
-    Water.stampEdge(p.x, p.y);
-    FX.setSuction(true);
+    Grime.stampMask(p.x, p.y, Config.BRUSH_RADIUS);
+    Grime.stampEdge(p.x, p.y);
+    FX.setSpray(true);
     if (e.cancelable) e.preventDefault();
   }
 
   function onPointerMove(e) {
     var p = pointerToCss(e);
     var pdx = p.x - State.nozzle.x;
-    var pdy = p.y - State.nozzle.y;
-    State.vx = pdx;
     State.nozzle.x = p.x;
     State.nozzle.y = p.y;
     moveNozzleEl(p.x, p.y, pdx, State.pointerDown);
     if (State.pointerDown && State.phase === "playing") {
+      var ddx = p.x - State.downX;
+      var ddy = p.y - State.downY;
+      State.maxDisp = Math.max(State.maxDisp, Math.sqrt(ddx * ddx + ddy * ddy));
       if (State.lastDab) {
         var mdx = p.x - State.lastDab.x;
         var mdy = p.y - State.lastDab.y;
@@ -675,7 +820,7 @@
           State.moveDir.x = mdx / ml;
           State.moveDir.y = mdy / ml;
         }
-        Water.eraseSegment(State.lastDab.x, State.lastDab.y, p.x, p.y);
+        Grime.eraseSegment(State.lastDab.x, State.lastDab.y, p.x, p.y);
         if (moved > 6) {
           State.moving = true;
           FX.vibrate();
@@ -687,19 +832,48 @@
   }
 
   function onPointerUp(e) {
+    var wasDown = State.pointerDown;
     State.pointerDown = false;
-    State.lastDab = null;
-    gate.classList.remove("is-suction");
-    FX.setSuction(false);
+    gate.classList.remove("is-spraying");
+    FX.setSpray(false);
     try { canvas.releasePointerCapture(e.pointerId); } catch (err) {}
+
+    // Tap splash: short AND still, never on pointercancel, only mid-game.
+    if (
+      wasDown &&
+      e.type !== "pointercancel" &&
+      State.phase === "playing" &&
+      performance.now() - State.downT <= Config.TAP_MS &&
+      State.maxDisp <= Config.TAP_MOVE_PX
+    ) {
+      tapSplash(State.downX, State.downY);
+    }
+    State.lastDab = null;
+  }
+
+  function tapSplash(x, y) {
+    // Organic two-lobe splash rather than a perfect circle.
+    var k = ++Particles.seq;
+    var a = (k * 2.39963) % (Math.PI * 2);
+    Grime.stampMask(x, y, Config.TAP_RADIUS);
+    Grime.stampMask(x + Math.cos(a) * 30, y + Math.sin(a) * 30, Config.TAP_RADIUS * 0.7);
+    Grime.stampEdge(x, y, Config.TAP_RADIUS * 1.05);
+    Particles.burstMist(16, x + Config.TIP.x * 0.4, y + Config.TIP.y * 0.4);
+    Particles.spawnDrips(8, x, y, 0);
+    FX.burstHiss();
+    FX.vibrate();
+    if (nozzleInner) {
+      nozzleInner.classList.add("is-burst");
+      window.setTimeout(function () {
+        nozzleInner.classList.remove("is-burst");
+      }, 260);
+    }
   }
 
   function moveNozzleEl(x, y, vx, leaning) {
-    // Lean the nozzle into horizontal motion; pop slightly while suctioning.
-    var lean = leaning ? Math.max(-14, Math.min(14, (vx || 0) * 0.6)) : 0;
-    var scale = leaning && State.pointerDown ? 1.08 : 1;
-    nozzleEl.style.transform =
-      "translate(" + x + "px," + y + "px) rotate(" + lean + "deg) scale(" + scale + ")";
+    // Lean the nozzle into horizontal motion while scrubbing.
+    var lean = leaning ? Math.max(-10, Math.min(10, (vx || 0) * 0.5)) : 0;
+    nozzleEl.style.transform = "translate(" + x + "px," + y + "px) rotate(" + lean + "deg)";
   }
 
   function onSoundClick() {
@@ -707,13 +881,13 @@
   }
 
   /* ----------------------------------------------------- State transitions */
-  function startDrain() {
+  function startSweep() {
     if (State.phase !== "playing") return;
-    State.phase = "draining";
+    State.phase = "sweeping";
     State.pointerDown = false;
-    gate.classList.remove("is-suction");
-    gate.classList.add("is-draining");
-    Drain.start();
+    gate.classList.remove("is-spraying");
+    gate.classList.add("is-sweeping");
+    Sweep.start();
   }
 
   var torndown = false;
@@ -721,7 +895,7 @@
     if (torndown) return;
     torndown = true;
     Loop.stop();
-    FX.setSuction(false);
+    FX.setSpray(false);
     try { window.sessionStorage.setItem(Config.STORAGE_KEY, "1"); } catch (e) {}
     document.body.classList.remove("gate-active");
     removeListeners();
@@ -739,7 +913,7 @@
   // Fast teardown for Skip / Esc — works in any non-done phase.
   function skip() {
     if (State.phase === "done") return;
-    State.phase = "draining"; // block further play/erase
+    State.phase = "sweeping"; // block further play/erase
     Loop.stop();
     finish();
   }
@@ -759,7 +933,7 @@
     if (torndown) return;
     torndown = true;
     Loop.stop();
-    FX.setSuction(false);
+    FX.setSpray(false);
     try { window.sessionStorage.setItem(Config.STORAGE_KEY, "1"); } catch (e) {}
     removeListeners();
     teardownImmediate();
@@ -785,7 +959,7 @@
   function resize() {
     var prevMask = null;
     if (W > 0 && H > 0) {
-      // Preserve cleared progress across resize by copying the old mask.
+      // Preserve cleaned progress across resize by copying the old mask.
       prevMask = document.createElement("canvas");
       prevMask.width = maskCanvas.width;
       prevMask.height = maskCanvas.height;
@@ -812,9 +986,7 @@
     edgeCanvas.height = canvas.height;
     edgeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    Water.buildTexture();
-    Water.buildShimmer();
-    Hose.measure();
+    Grime.buildTexture();
   }
 
   /* ----------------------------------------------------------- Listeners */
@@ -826,10 +998,7 @@
     resize();
     // Idle keeps the RAF loop off, so repaint the static frame ourselves —
     // otherwise a resize before the first interaction blanks the gate canvas.
-    if (!Loop.running) {
-      Water.draw(0);
-      Hose.draw();
-    }
+    if (!Loop.running) Grime.draw();
   }
 
   function onMotionChange(e) {
@@ -883,8 +1052,7 @@
     skipBtn.focus({ preventScroll: true });
     // Draw one static frame; the canvas RAF loop starts on first interaction
     // (CSS animations keep the idle gate alive without burning GPU).
-    Water.draw(0);
-    Hose.draw();
+    Grime.draw();
   }
 
   if (document.readyState === "loading") {

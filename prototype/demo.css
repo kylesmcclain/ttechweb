@@ -381,60 +381,31 @@ nav a:hover::after {
   touch-action: none;
 }
 
-/* Corner vacuum unit the hose connects back to. */
-.gate-vacuum {
+/* Hairline progress bar — the only progress chrome on the gate. */
+.gate-progress {
   position: absolute;
-  right: clamp(16px, 4vw, 48px);
-  bottom: clamp(16px, 4vw, 48px);
-  z-index: 2;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 6;
   pointer-events: none;
 }
 
-.vacuum-body {
-  width: clamp(74px, 12vw, 104px);
-  height: clamp(96px, 16vw, 140px);
-  border-radius: 18px 18px 14px 14px;
-  background: linear-gradient(160deg, #f2f7fb 0%, #cdddea 60%, #aac4d8 100%);
-  box-shadow:
-    inset 0 3px 6px rgba(255, 255, 255, 0.7),
-    inset 0 -10px 20px rgba(5, 58, 124, 0.25),
-    0 18px 40px rgba(3, 25, 55, 0.45);
-  display: grid;
-  place-items: center;
-  padding: 14px;
-}
-
-.vacuum-tank {
-  position: relative;
+.gate-progress-fill {
+  display: block;
   width: 100%;
   height: 100%;
-  border-radius: 10px;
-  background: rgba(5, 40, 80, 0.32);
-  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.5);
-  overflow: hidden;
+  transform: scaleX(0);
+  transform-origin: left;
+  background: linear-gradient(90deg, var(--blue), var(--cyan) 55%, var(--teal));
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.15);
+  transition: transform 220ms ease;
 }
 
-.vacuum-fill {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 0%;
-  background: linear-gradient(180deg, #29c6ef, #0a78d8 70%, #0660b8);
-  box-shadow: inset 0 4px 8px rgba(255, 255, 255, 0.35);
-  transition: height 200ms ease;
-}
-
-.vacuum-fill::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 7px;
-  background: rgba(220, 248, 255, 0.85);
-  filter: blur(1px);
-}
-
-/* The draggable vacuum nozzle that follows the pointer. */
+/* The spray nozzle that follows the pointer. The outer element carries the JS
+   translate/lean; the inner wrapper carries CSS idle/press animations so the
+   two transforms never fight. */
 .gate-nozzle {
   position: absolute;
   left: 0;
@@ -446,82 +417,48 @@ nav a:hover::after {
   will-change: transform;
 }
 
-.nozzle-head {
+.nozzle-inner {
   position: absolute;
-  left: -19px;
-  top: -19px;
-  width: 38px;
-  height: 38px;
-  border-radius: 50% 50% 50% 12px;
-  transform: rotate(45deg);
-  background: linear-gradient(150deg, #f4f9fd 0%, #c2d6e6 55%, #8fb1cc 100%);
-  box-shadow:
-    inset 0 2px 4px rgba(255, 255, 255, 0.8),
-    inset 0 -6px 12px rgba(5, 58, 124, 0.4),
-    0 8px 18px rgba(3, 25, 55, 0.45);
+  display: block;
+  width: 66px;
+  height: 66px;
+  /* Position the SVG so the sprayer TIP lands ~(+18px, -22px) from the pointer:
+     the tool floats up-right of the finger and sprays down-left at the surface. */
+  left: 4px;
+  top: -72px;
+  filter: drop-shadow(0 6px 14px rgba(3, 25, 55, 0.4));
+  transition: transform 90ms ease;
 }
 
-/* Dark inlet so the head reads as a vacuum mouth, not a blank tile. */
-.nozzle-head::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 15px;
-  height: 15px;
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  background: radial-gradient(circle at 50% 40%, #143b66 0%, #0a2647 60%, #06203f 100%);
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+.nozzle-inner svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
-.nozzle-glow {
-  position: absolute;
-  left: -34px;
-  top: -34px;
-  width: 68px;
-  height: 68px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(135, 226, 255, 0.55), rgba(135, 226, 255, 0) 70%);
-  opacity: 0;
-  transition: opacity 160ms ease;
+/* Idle: a gentle inviting bob while nobody has touched yet. */
+.gate:not(.is-engaged) .nozzle-inner {
+  animation: nozzleBob 2.2s ease-in-out infinite;
 }
 
-.gate.is-suction .nozzle-glow {
-  opacity: 1;
+@keyframes nozzleBob {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-4px) rotate(-3deg); }
 }
 
-/* Concentric suction ring: pulses outward to invite while idle, and inward
-   (a "pull") while suctioning. Universal "this sucks things in" signal. */
-.gate-nozzle::after {
-  content: "";
-  position: absolute;
-  left: -30px;
-  top: -30px;
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  border: 2px solid rgba(150, 228, 255, 0.6);
-  opacity: 0;
-  pointer-events: none;
+/* Pressed: tilt into the surface while spraying. */
+.gate.is-spraying .nozzle-inner {
+  transform: rotate(-6deg) translate(-1px, 1px) scale(1.06);
 }
 
-.gate:not(.is-engaged) .gate-nozzle::after {
-  animation: nozzleIdle 2s ease-out infinite;
+/* Tap: one-shot recoil kick. */
+.gate .nozzle-inner.is-burst {
+  animation: nozzleRecoil 250ms ease-out;
 }
 
-.gate.is-suction .gate-nozzle::after {
-  animation: nozzleSuck 0.7s ease-out infinite;
-}
-
-@keyframes nozzleIdle {
-  0% { transform: scale(0.55); opacity: 0.55; }
-  100% { transform: scale(1.6); opacity: 0; }
-}
-
-@keyframes nozzleSuck {
-  0% { transform: scale(1.5); opacity: 0.75; }
-  100% { transform: scale(0.45); opacity: 0; }
+@keyframes nozzleRecoil {
+  0% { transform: rotate(-12deg) translate(-3px, 2px) scale(1.1); }
+  100% { transform: rotate(0deg) translate(0, 0) scale(1); }
 }
 
 /* First-run hint. */
