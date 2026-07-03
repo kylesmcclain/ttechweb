@@ -33,7 +33,7 @@
     MAX_PARTICLES: 140,
     MIST_PER_FRAME: 6, // while dragging
     MIST_IDLE_PER_FRAME: 2, // while pressing without moving (spray keeps spitting)
-    DRIP_PER_FRAME: 2, // while erasing
+    DRIP_PER_FRAME: 1, // while erasing — few and chunky, not a dashed trail
     MIST_LIFE_MIN: 240, // ms
     MIST_LIFE_MAX: 420,
     DRIP_LIFE_MIN: 600,
@@ -43,7 +43,7 @@
     MIST_CONE_DEG: 22,
     GRAVITY_MIST: 300, // px/s^2
     GRAVITY_DRIP: 900,
-    TIP: { x: 18, y: -22 }, // spray tip offset from the pointer contact point
+    TIP: { x: 24, y: -12 }, // spray tip offset from the pointer contact point
     EDGE_DECAY: 0.12, // suds line pops then vanishes
     SWEEP_MS: 800,
     SWEEP_ANGLE: (-18 * Math.PI) / 180,
@@ -216,16 +216,18 @@
       c.fillRect(0, 0, W, H);
 
       // 4. Vertical drip streaks — the "dirty water ran down this screen" read.
-      //    Long, plentiful, and some bleeding down from the top edge.
+      //    DARK runs (dirt concentrates in the stream), slightly wavy so they
+      //    don't read as mechanical parallel lines; a few lighter thinned ones.
       for (var s = 0; s < 56; s++) {
         var sx = rng() * W;
         var sy = s % 3 === 0 ? -10 : rng() * H * 0.55;
         var len = 120 + rng() * 420;
         var w = 3 + rng() * 8;
-        var light = s % 4 === 3; // every 4th is a rain-thinned lighter track
-        var col = light ? "176, 180, 178" : "58, 60, 58";
-        var alpha = light ? 0.14 : 0.3;
-        var lg = c.createLinearGradient(sx, sy, sx, sy + len);
+        var light = s % 6 === 5; // occasional rain-thinned lighter track
+        var col = light ? "182, 186, 182" : "46, 48, 44";
+        var alpha = light ? 0.13 : 0.42;
+        var wob = (rng() - 0.5) * 26; // organic sideways drift
+        var lg = c.createLinearGradient(sx, sy, sx + wob, sy + len);
         lg.addColorStop(0, "rgba(" + col + ", " + alpha + ")");
         lg.addColorStop(1, "rgba(" + col + ", 0)");
         c.strokeStyle = lg;
@@ -233,14 +235,27 @@
         c.lineCap = "round";
         c.beginPath();
         c.moveTo(sx, sy);
-        c.lineTo(sx, sy + len);
+        c.quadraticCurveTo(sx + wob * 0.3, sy + len * 0.55, sx + wob, sy + len);
         c.stroke();
         // Hanging drip head at the tail.
         c.fillStyle = "rgba(" + col + ", " + alpha * 0.9 + ")";
         c.beginPath();
-        c.arc(sx, sy + len, w * 0.9, 0, Math.PI * 2);
+        c.arc(sx + wob, sy + len, w * 0.9, 0, Math.PI * 2);
         c.fill();
       }
+
+      // 4b. Heavy grime band over the hero text zone — the headline must be a
+      //     silhouette until it's washed, or the reveal has no payoff.
+      c.save();
+      c.translate(W * 0.45, H * 0.36);
+      c.scale(1.7, 0.62);
+      var hb = c.createRadialGradient(0, 0, 0, 0, 0, W * 0.32);
+      hb.addColorStop(0, "rgba(76, 72, 64, 0.6)");
+      hb.addColorStop(0.75, "rgba(76, 72, 64, 0.35)");
+      hb.addColorStop(1, "rgba(76, 72, 64, 0)");
+      c.fillStyle = hb;
+      c.fillRect(-W * 0.32, -W * 0.32, W * 0.64, W * 0.64);
+      c.restore();
 
       // 5. Smudge arcs — old half-hearted rag wipes.
       for (var m = 0; m < 10; m++) {
@@ -438,7 +453,7 @@
         p.vy = 20 + r2 * 60;
         p.life = 0;
         p.max = Config.DRIP_LIFE_MIN + r1 * (Config.DRIP_LIFE_MAX - Config.DRIP_LIFE_MIN);
-        p.size = 2 + r2 * 2;
+        p.size = 2.5 + r2 * 2.5;
         p.active = true;
         made++;
       }
@@ -927,18 +942,29 @@
   }
 
   function tapSplash(x, y) {
-    // Organic two-lobe splash rather than a perfect circle.
-    var k = ++Particles.seq;
-    var a = (k * 2.39963) % (Math.PI * 2);
-    Grime.stampMask(x, y, Config.TAP_RADIUS);
-    Grime.stampMask(x + Math.cos(a) * 30, y + Math.sin(a) * 30, Config.TAP_RADIUS * 0.7);
-    // Expanding foam ring: staggered suds stamps + per-frame decay read as a
-    // splash ring blooming outward and dissolving. Zero new assets.
-    Grime.stampEdge(x, y, Config.TAP_RADIUS * 0.6);
+    // Irregular multi-lobe splash with a hardened boundary — a wiped patch of
+    // glass, not a spotlight. Double-stamping steepens the sprite's feather.
+    var R = Config.TAP_RADIUS;
+    Grime.stampMask(x, y, R * 0.9);
+    Grime.stampMask(x, y, R * 0.9);
+    for (var l = 0; l < 3; l++) {
+      var k = ++Particles.seq;
+      var a = (k * 2.39963) % (Math.PI * 2);
+      var off = R * (0.35 + ((k * 29) % 100) / 300);
+      Grime.stampMask(x + Math.cos(a) * off, y + Math.sin(a) * off, R * (0.45 + l * 0.08));
+    }
+    // Clumpy foam: small suds dots scattered on the rim (not one smooth halo),
+    // then two staggered expanding rings that decay into a splash bloom.
+    for (var f = 0; f < 8; f++) {
+      var k2 = ++Particles.seq;
+      var fa = (k2 * 2.39963) % (Math.PI * 2);
+      var fr = R * (0.82 + ((k2 * 41) % 100) / 480);
+      Grime.stampEdge(x + Math.cos(fa) * fr, y + Math.sin(fa) * fr, R * 0.3);
+    }
     [70, 130].forEach(function (delay, i) {
       window.setTimeout(function () {
         if (State.phase === "playing" || State.phase === "sweeping") {
-          Grime.stampEdge(x, y, Config.TAP_RADIUS * (0.85 + i * 0.3));
+          Grime.stampEdge(x, y, R * (0.85 + i * 0.3));
         }
       }, delay);
     });

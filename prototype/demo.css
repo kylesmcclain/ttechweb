@@ -434,10 +434,10 @@ nav a:hover::after {
   display: block;
   width: 78px;
   height: 78px;
-  /* Position the SVG so the sprayer TIP lands ~(+18px, -22px) from the pointer:
-     the tool floats up-right of the finger and sprays down-left at the surface. */
-  left: 1px;
-  top: -80px;
+  /* Position the SVG so the sprayer TIP lands ~(+24px, -12px) from the pointer:
+     the bottle floats up-right of the finger and sprays down-left at the surface. */
+  left: 19px;
+  top: -49px;
   filter: drop-shadow(0 6px 14px rgba(3, 25, 55, 0.4));
   transition: transform 90ms ease;
 }
@@ -583,6 +583,13 @@ nav a:hover::after {
   }
   .site-footer {
     flex-direction: column;
+  }
+  /* On phones the pills would sit on the site's logo as it's revealed — move
+     them to the thumb zone instead. */
+  .gate-controls {
+    top: auto;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    right: 14px;
   }
 }
 

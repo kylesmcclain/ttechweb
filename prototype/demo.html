@@ -109,28 +109,30 @@
 
       <div class="gate-nozzle" data-nozzle aria-hidden="true">
         <span class="nozzle-inner">
-          <!-- Flat cartoon spray bottle, tip aiming down-left at the contact point.
-               A spray bottle is ~70% bottle: the body is what makes it read. -->
+          <!-- Flat cartoon spray bottle: the classic upright A-shape (wide body,
+               pinched neck, head + trigger pointing left), tilted slightly into
+               the surface. The silhouette is what makes it read at a glance. -->
           <svg viewBox="0 0 80 80" width="78" height="78" aria-hidden="true">
-            <g transform="rotate(-45 40 40)">
-              <!-- bottle body -->
-              <path d="M46 50 h14 a5 5 0 0 1 5 5 v8 a6 6 0 0 1 -6 6 h-12 a6 6 0 0 1 -6 -6 v-8 a5 5 0 0 1 5 -5 Z"
+            <g transform="rotate(-18 40 40)">
+              <!-- A-shape bottle body flaring from the neck -->
+              <path d="M30 41 h13 l8 22 a6 6 0 0 1 -5.8 7.8 H28 a6 6 0 0 1 -5.8 -7.8 Z"
                     fill="#eaf6ff" stroke="#053a7c" stroke-width="2.5" stroke-linejoin="round" />
               <!-- bottle label stripe -->
-              <rect x="44" y="55" width="18" height="7" rx="2" fill="#10b8e6" opacity="0.55" />
-              <!-- neck connecting head to bottle -->
-              <rect x="47" y="43" width="10" height="9" rx="2" fill="#bcd7ea" stroke="#053a7c" stroke-width="2" />
-              <!-- sprayer head -->
-              <path d="M17 30 h30 a7 7 0 0 1 7 7 v2 a7 7 0 0 1 -7 7 H17 a5.5 5.5 0 0 1 -5.5 -5.5 v-5 A5.5 5.5 0 0 1 17 30 Z"
+              <rect x="27" y="57" width="20" height="8" rx="2" fill="#10b8e6" opacity="0.55" />
+              <!-- pinched neck -->
+              <rect x="30" y="33" width="13" height="9" rx="2" fill="#bcd7ea" stroke="#053a7c" stroke-width="2" />
+              <!-- sprayer head pointing left -->
+              <path d="M14 20 h26 a6 6 0 0 1 6 6 v3 a6 6 0 0 1 -6 6 H14 a5 5 0 0 1 -5 -5 v-5 a5 5 0 0 1 5 -5 Z"
                     fill="#0768d7" stroke="#053a7c" stroke-width="2.5" stroke-linejoin="round" />
               <!-- tip cap + aperture -->
-              <rect x="5" y="31.5" width="9" height="13" rx="3" fill="#053a7c" />
-              <circle cx="9.5" cy="38" r="2.6" fill="#10b8e6" />
-              <!-- trigger -->
-              <path d="M25 46 q-2.5 9 4.5 12.5 q3.5 1.5 4.5 -1.5 q-4.5 -4.5 -3.5 -11 Z"
+              <rect x="3.5" y="21.5" width="8" height="12" rx="3" fill="#053a7c" />
+              <circle cx="7.5" cy="27.5" r="2.4" fill="#10b8e6" />
+              <!-- protruding trigger under the head's front -->
+              <path d="M18 35 q-3 10 4 14 q3.5 1.6 4.6 -1.6 q-4.6 -5 -3.6 -12.4 Z"
                     fill="#10b8e6" stroke="#053a7c" stroke-width="2.5" stroke-linejoin="round" />
-              <!-- gloss strip -->
-              <rect x="19" y="32.5" width="22" height="3.4" rx="1.7" fill="#ffffff" opacity="0.5" />
+              <!-- gloss strips -->
+              <rect x="16" y="22.5" width="20" height="3.2" rx="1.6" fill="#ffffff" opacity="0.5" />
+              <rect x="27" y="45" width="4" height="16" rx="2" fill="#ffffff" opacity="0.6" />
             </g>
           </svg>
         </span>
