@@ -1055,9 +1055,10 @@
     dpr = Math.min(Config.MAX_DPR, window.devicePixelRatio || 1);
     W = gate.clientWidth;
     H = gate.clientHeight;
-    // Scale the brush with the viewport so big screens don't take forever
-    // and phones aren't trivially instant.
-    Config.BRUSH_RADIUS = Math.max(82, Math.min(120, Math.min(W, H) * 0.11));
+    // Scale the brush and tap splash with the viewport so big screens don't
+    // take forever and phones aren't trivially instant (2 taps ≈ done).
+    Config.BRUSH_RADIUS = Math.max(56, Math.min(120, Math.min(W, H) * 0.13));
+    Config.TAP_RADIUS = Config.BRUSH_RADIUS * 1.5;
 
     canvas.width = Math.max(1, Math.round(W * dpr));
     canvas.height = Math.max(1, Math.round(H * dpr));
