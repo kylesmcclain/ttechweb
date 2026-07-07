@@ -218,7 +218,9 @@
       // 4. Vertical drip streaks — the "dirty water ran down this screen" read.
       //    DARK runs (dirt concentrates in the stream), slightly wavy so they
       //    don't read as mechanical parallel lines; a few lighter thinned ones.
-      for (var s = 0; s < 56; s++) {
+      //    Count scales with width so phones aren't denser than desktops.
+      var streakCount = Math.round(20 + W * 0.028);
+      for (var s = 0; s < streakCount; s++) {
         var sx = rng() * W;
         var sy = s % 3 === 0 ? -10 : rng() * H * 0.55;
         var len = 120 + rng() * 420;
